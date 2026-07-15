@@ -51,7 +51,11 @@ object XrayDownloader {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun getBinaryFile(context: Context): File = File(context.filesDir, "xray")
+    fun getBinaryFile(context: Context): File {
+        val nativeDir = File(context.applicationInfo.nativeLibraryDir)
+        nativeDir.mkdirs()
+        return File(nativeDir, "libxray.so")
+    }
 
     fun isReady(context: Context): Boolean {
         val f = getBinaryFile(context)
@@ -213,7 +217,8 @@ object XrayDownloader {
     }
 
     fun delete(context: Context) {
-        getBinaryFile(context).delete()
+        val f = getBinaryFile(context)
+        if (f.exists()) f.delete()
         File(context.filesDir, "xray.zip").delete()
         _state.value = State.IDLE
         _progress.value = 0f

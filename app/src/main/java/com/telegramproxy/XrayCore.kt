@@ -69,12 +69,9 @@ class XrayCore private constructor(private val context: Context) {
             }
             addLog("Бинарник: ${binary.absolutePath} (${binary.length()} байт)")
 
-            val canExec = binary.canExecute()
-            addLog("isExecutable: $canExec")
-            if (!canExec) {
-                binary.setExecutable(true, false)
-                addLog("setExecutable(true) вызван")
-            }
+            binary.setExecutable(true, false)
+            binary.setReadable(true, false)
+            addLog("isExecutable: ${binary.canExecute()}")
 
             addLog("Запуск: ${binary.absolutePath} run -c ${configFile.absolutePath}")
 
