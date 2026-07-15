@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Telegram Proxy</string>
+    <string name="notification_channel_name">VPN Proxy</string>
+    <string name="notification_channel_desc">Фоновая работа локального SOCKS5 прокси</string>
+    <string name="notification_title">Telegram Proxy активен</string>
+    <string name="notification_text">SOCKS5: 127.0.0.1:10808</string>
+    <string name="notification_disconnected">Прокси отключён</string>
+</resources>
