@@ -26,11 +26,7 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val connectionState = ProxyService.connectionState
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            ProxyService.ConnectionState.Disconnected
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProxyService.ConnectionState.Disconnected)
 
     val statusMessage = xray.statusMessage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Отключено")
@@ -41,20 +37,27 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
     val xrayProgress = XrayDownloader.progress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
+    val xrayStatusText = XrayDownloader.statusText
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     val xrayError = XrayDownloader.errorMessage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val xrayLogLines = xray.logLines
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val xrayCoreState = xray.state
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), XrayCore.State.STOPPED)
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
-        ensureXrayReady()
+        XrayDownloader.ensureReadyAsync(getApplication())
     }
 
     fun ensureXrayReady() {
-        viewModelScope.launch {
-            XrayDownloader.ensureReady(getApplication())
-        }
+        XrayDownloader.ensureReadyAsync(getApplication())
     }
 
     fun selectServer(id: String) {
@@ -72,18 +75,18 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         if (!XrayDownloader.isReady(ctx)) {
-            val msg = "Загрузка Xray… Подождите"
-            Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "Xray загружается… Подождите", Toast.LENGTH_SHORT).show()
             ensureXrayReady()
             return
         }
 
         val id = manager.selectedServerId.value
         if (id == null) {
-            Toast.makeText(ctx, "Сначала выберите сервер", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "Выберите сервер из списка", Toast.LENGTH_SHORT).show()
             return
         }
 
+        Toast.makeText(ctx, "Подключение…", Toast.LENGTH_SHORT).show()
         ProxyService.connect(ctx, id)
     }
 
@@ -112,6 +115,4 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
         }
         manager.removeServer(id)
     }
-
-    fun clearMessage() {}
 }

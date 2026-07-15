@@ -110,6 +110,9 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
     val downloaderState by viewModel.xrayDownloaderState.collectAsState()
     val downloadProgress by viewModel.xrayProgress.collectAsState()
     val xrayError by viewModel.xrayError.collectAsState()
+    val xrayStatusText by viewModel.xrayStatusText.collectAsState()
+    val xrayCoreState by viewModel.xrayCoreState.collectAsState()
+    val xrayLogLines by viewModel.xrayLogLines.collectAsState()
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -173,11 +176,14 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
                     selectedServerId = selectedId,
                     connectionState = connectionState,
                     statusMessage = statusMessage,
-                    message = null,
-                    onClearMessage = {},
+                    xrayDownloaderState = downloaderState,
+                    xrayStatusText = xrayStatusText,
+                    xrayCoreState = xrayCoreState,
+                    xrayLogLines = xrayLogLines,
                     onSelectServer = viewModel::selectServer,
                     onConnectToggle = viewModel::toggleConnection,
                     onDeleteServer = viewModel::removeServer,
+                    onRetryDownload = viewModel::ensureXrayReady,
                     modifier = Modifier.weight(1f)
                 )
                 1 -> AddSubscriptionScreen(

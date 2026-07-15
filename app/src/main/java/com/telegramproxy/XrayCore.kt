@@ -13,10 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class XrayCore private constructor(private val context: Context) {
 
     enum class State {
-        STOPPED,
-        STARTING,
-        RUNNING,
-        ERROR
+        STOPPED, STARTING, RUNNING, ERROR
     }
 
     private val _state = MutableStateFlow(State.STOPPED)
@@ -28,6 +25,9 @@ class XrayCore private constructor(private val context: Context) {
     private val _activeServer = MutableStateFlow<VlessServer?>(null)
     val activeServer: StateFlow<VlessServer?> = _activeServer.asStateFlow()
 
+    private val _logLines = MutableStateFlow<List<String>>(emptyList())
+    val logLines: StateFlow<List<String>> = _logLines.asStateFlow()
+
     private val running = AtomicBoolean(false)
     private var process: Process? = null
     private var logThread: Thread? = null
@@ -37,103 +37,75 @@ class XrayCore private constructor(private val context: Context) {
 
     val isRunning: Boolean get() = running.get() && _state.value == State.RUNNING
 
+    private fun addLog(line: String) {
+        Log.d(TAG, line)
+        val current = _logLines.value.toMutableList()
+        current.add(line)
+        if (current.size > 50) current.removeFirst()
+        _logLines.value = current
+    }
+
     fun start(server: VlessServer): Result<Unit> {
-        if (running.get()) {
-            stop()
-        }
+        if (running.get()) stop()
+
         return try {
             _state.value = State.STARTING
             _statusMessage.value = "Запуск Xray…"
             _activeServer.value = server
+            _logLines.value = emptyList()
+
+            addLog("Подготовка конфигурации для ${server.name}")
 
             val json = VlessConfig.generateXrayConfig(server, VlessConfig.LOCAL_SOCKS_PORT)
             configFile.writeText(json)
-            Log.i(TAG, "Config written: ${configFile.absolutePath}")
+            addLog("Конфиг записан: ${configFile.absolutePath}")
 
-            if (!XrayDownloader.isReady(context)) {
+            val binary = XrayDownloader.getBinaryFile(context)
+            if (!binary.exists()) {
+                addLog("ОШИБКА: Бинарник xray не найден: ${binary.absolutePath}")
                 _state.value = State.ERROR
-                _statusMessage.value = "Xray не загружен. Обновите приложение."
+                _statusMessage.value = "Бинарник xray не найден"
                 return Result.failure(IllegalStateException("Xray binary not found"))
             }
+            addLog("Бинарник: ${binary.absolutePath} (${binary.length()} байт)")
 
-            val started = startProcess(configFile.absolutePath)
-
-            if (!started) {
-                _state.value = State.ERROR
-                _statusMessage.value = "Ошибка запуска Xray"
-                _activeServer.value = null
-                return Result.failure(IllegalStateException("Xray process failed to start"))
+            val canExec = binary.canExecute()
+            addLog("isExecutable: $canExec")
+            if (!canExec) {
+                binary.setExecutable(true, false)
+                addLog("setExecutable(true) вызван")
             }
 
-            running.set(true)
-            _state.value = State.RUNNING
-            _statusMessage.value =
-                "Подключено → ${server.name} · SOCKS 127.0.0.1:${VlessConfig.LOCAL_SOCKS_PORT}"
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Log.e(TAG, "start failed", e)
-            running.set(false)
-            _state.value = State.ERROR
-            _statusMessage.value = "Ошибка: ${e.message}"
-            _activeServer.value = null
-            Result.failure(e)
-        }
-    }
+            addLog("Запуск: ${binary.absolutePath} run -c ${configFile.absolutePath}")
 
-    fun stop() {
-        try {
-            process?.let {
-                it.destroy()
-                try {
-                    it.destroyForcibly()
-                } catch (_: Exception) {
-                }
-            }
-            process = null
-            logThread?.interrupt()
-            logThread = null
-        } catch (e: Exception) {
-            Log.e(TAG, "stop error", e)
-        } finally {
-            running.set(false)
-            _state.value = State.STOPPED
-            _statusMessage.value = "Отключено"
-            _activeServer.value = null
-        }
-    }
-
-    private fun startProcess(configPath: String): Boolean {
-        val binary = XrayDownloader.getBinaryFile(context)
-        if (!binary.exists()) return false
-
-        return try {
-            if (!binary.canExecute()) binary.setExecutable(true)
-            val pb = ProcessBuilder(binary.absolutePath, "run", "-c", configPath)
+            val pb = ProcessBuilder(binary.absolutePath, "run", "-c", configFile.absolutePath)
             pb.directory(context.filesDir)
             pb.redirectErrorStream(true)
-            val env = pb.environment()
-            env["XRAY_LOCATION_ASSET"] = context.filesDir.absolutePath
+            pb.environment()["XRAY_LOCATION_ASSET"] = context.filesDir.absolutePath
+
             process = pb.start()
+            addLog("Process запущен, PID: ${getPid(process)}")
 
             logThread = Thread {
                 try {
                     BufferedReader(InputStreamReader(process!!.inputStream)).use { reader ->
                         var line: String?
                         while (reader.readLine().also { line = it } != null) {
-                            Log.d(TAG, "xray: $line")
-                            if (line?.contains("failed", true) == true ||
-                                line?.contains("error", true) == true
-                            ) {
-                                _statusMessage.value = "Xray: $line"
-                            }
-                            if (line?.contains("listening", true) == true) {
+                            val l = line ?: continue
+                            addLog("xray: $l")
+                            if (l.contains("listening", true) || l.contains("started", true)) {
                                 _statusMessage.value =
-                                    "Подключено → ${_activeServer.value?.name ?: "Сервер"} · SOCKS 127.0.0.1:${VlessConfig.LOCAL_SOCKS_PORT}"
+                                    "Подключено → ${server.name} · SOCKS 127.0.0.1:${VlessConfig.LOCAL_SOCKS_PORT}"
+                            }
+                            if (l.contains("failed", true) || l.contains("error", true) || l.contains("panic", true)) {
+                                _statusMessage.value = "Xray: $l"
                             }
                         }
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    addLog("Ошибка чтения лога: ${e.message}")
                 }
+                addLog("Процесс xray завершён")
                 if (running.get()) {
                     running.set(false)
                     _state.value = State.STOPPED
@@ -145,7 +117,7 @@ class XrayCore private constructor(private val context: Context) {
                 it.start()
             }
 
-            Thread.sleep(500)
+            Thread.sleep(1000)
             val alive = try {
                 process?.exitValue()
                 false
@@ -153,14 +125,54 @@ class XrayCore private constructor(private val context: Context) {
                 true
             }
             if (!alive) {
-                Log.e(TAG, "xray process exited early")
-                return false
+                val exitCode = try { process?.exitValue() } catch (_: Exception) { "?" }
+                addLog("ОШИБКА: Процесс завершился сразу (exit code: $exitCode)")
+                _state.value = State.ERROR
+                _statusMessage.value = "Xray завершился (код: $exitCode)"
+                return Result.failure(IllegalStateException("Xray exited with code $exitCode"))
             }
-            Log.i(TAG, "xray process started")
-            true
+
+            running.set(true)
+            _state.value = State.RUNNING
+            _statusMessage.value =
+                "Подключено → ${server.name} · SOCKS 127.0.0.1:${VlessConfig.LOCAL_SOCKS_PORT}"
+            addLog("Xray запущен и работает")
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "process start failed", e)
-            false
+            Log.e(TAG, "start failed", e)
+            addLog("ОШИБКА: ${e.message}")
+            running.set(false)
+            _state.value = State.ERROR
+            _statusMessage.value = "Ошибка: ${e.message}"
+            _activeServer.value = null
+            Result.failure(e)
+        }
+    }
+
+    private fun getPid(p: Process?): String {
+        return try {
+            val f = p?.javaClass?.getDeclaredField("pid")
+            f?.isAccessible = true
+            f?.getInt(p)?.toString() ?: "?"
+        } catch (_: Exception) { "?" }
+    }
+
+    fun stop() {
+        try {
+            process?.let {
+                it.destroy()
+                try { it.destroyForcibly() } catch (_: Exception) {}
+            }
+            process = null
+            logThread?.interrupt()
+            logThread = null
+        } catch (e: Exception) {
+            Log.e(TAG, "stop error", e)
+        } finally {
+            running.set(false)
+            _state.value = State.STOPPED
+            _statusMessage.value = "Отключено"
+            _activeServer.value = null
         }
     }
 
