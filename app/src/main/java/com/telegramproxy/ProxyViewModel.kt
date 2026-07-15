@@ -34,11 +34,30 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
     val statusMessage = xray.statusMessage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Отключено")
 
+    val xrayDownloaderState = XrayDownloader.state
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), XrayDownloader.State.IDLE)
+
+    val xrayProgress = XrayDownloader.progress
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
+
+    val xrayError = XrayDownloader.errorMessage
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    init {
+        ensureXrayReady()
+    }
+
+    fun ensureXrayReady() {
+        viewModelScope.launch {
+            XrayDownloader.ensureReady(getApplication())
+        }
+    }
 
     fun selectServer(id: String) {
         manager.selectServer(id)
@@ -52,6 +71,11 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
         ) {
             ProxyService.disconnect(ctx)
         } else {
+            if (!XrayDownloader.isReady(ctx)) {
+                _message.value = "Xray не загружен. Подождите…"
+                ensureXrayReady()
+                return
+            }
             val id = manager.selectedServerId.value
             if (id == null) {
                 _message.value = "Сначала выберите сервер"
@@ -64,15 +88,6 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
     fun addVless(name: String, url: String): Result<VlessServer> {
         if (url.isBlank()) return Result.failure(IllegalArgumentException("Введите VLESS URL"))
         return manager.addManualVless(name.ifBlank { "Сервер" }, url)
-    }
-
-    fun importSubscription(name: String, url: String, onDone: (Result<Subscription>) -> Unit) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            val result = manager.importFromUrl(name, url)
-            _isLoading.value = false
-            onDone(result)
-        }
     }
 
     suspend fun importSubscriptionSuspend(name: String, url: String): Result<Subscription> {

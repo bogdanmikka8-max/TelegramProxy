@@ -3,6 +3,9 @@ package com.telegramproxy.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,8 +30,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +58,8 @@ fun ServerListScreen(
     selectedServerId: String?,
     connectionState: ProxyService.ConnectionState,
     statusMessage: String,
+    message: String?,
+    onClearMessage: () -> Unit,
     onSelectServer: (String) -> Unit,
     onConnectToggle: () -> Unit,
     onDeleteServer: (String) -> Unit,
@@ -60,81 +69,95 @@ fun ServerListScreen(
     val isConnected = connectionState is ProxyService.ConnectionState.Connected
     val isConnecting = connectionState is ProxyService.ConnectionState.Connecting
     val connectedId = (connectionState as? ProxyService.ConnectionState.Connected)?.server?.id
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            Spacer(Modifier.height(8.dp))
-            ConnectionStatusBanner(
-                state = connectionState,
-                statusMessage = statusMessage
-            )
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            onClearMessage()
         }
+    }
 
-        item {
-            Button(
-                onClick = onConnectToggle,
-                enabled = selectedServerId != null && !isConnecting,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isConnected) ErrorRed else TelegramBlue
-                )
-            ) {
-                Icon(
-                    Icons.Default.PowerSettingsNew,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = when {
-                        isConnecting -> "Подключение…"
-                        isConnected -> "Отключить"
-                        else -> "Подключить"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+    androidx.compose.material3.Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = androidx.compose.ui.graphics.Color.Transparent
+    ) { snackbarPadding ->
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(snackbarPadding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Spacer(Modifier.height(8.dp))
+                ConnectionStatusBanner(
+                    state = connectionState,
+                    statusMessage = statusMessage
                 )
             }
-        }
 
-        item {
-            TelegramProxySetupCard(
-                onOpenTelegramProxy = {
-                    openTelegramProxy(context)
+            item {
+                Button(
+                    onClick = onConnectToggle,
+                    enabled = selectedServerId != null && !isConnecting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isConnected) ErrorRed else TelegramBlue
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.PowerSettingsNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = when {
+                            isConnecting -> "Подключение…"
+                            isConnected -> "Отключить"
+                            else -> "Подключить"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
-            )
-        }
+            }
 
-        item {
-            SectionHeader("Серверы (${servers.size})")
-            if (servers.isEmpty()) {
-                Text(
-                    "Нет серверов. Добавьте подписку на вкладке «Подписки».",
-                    color = OnSurfaceMuted,
-                    style = MaterialTheme.typography.bodyMedium
+            item {
+                TelegramProxySetupCard(
+                    onOpenTelegramProxy = {
+                        openTelegramProxy(context)
+                    }
                 )
             }
-        }
 
-        items(servers, key = { it.id }) { server ->
-            ServerCard(
-                server = server,
-                selected = server.id == selectedServerId,
-                connected = server.id == connectedId,
-                onClick = { onSelectServer(server.id) },
-                onDelete = { onDeleteServer(server.id) }
-            )
-        }
+            item {
+                SectionHeader("Серверы (${servers.size})")
+                if (servers.isEmpty()) {
+                    Text(
+                        "Нет серверов. Добавьте подписку на вкладке «Подписки».",
+                        color = OnSurfaceMuted,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
 
-        item { Spacer(Modifier.height(88.dp)) }
+            items(servers, key = { it.id }) { server ->
+                ServerCard(
+                    server = server,
+                    selected = server.id == selectedServerId,
+                    connected = server.id == connectedId,
+                    onClick = { onSelectServer(server.id) },
+                    onDelete = { onDeleteServer(server.id) }
+                )
+            }
+
+            item { Spacer(Modifier.height(88.dp)) }
+        }
     }
 }
 
@@ -177,14 +200,12 @@ private fun TelegramProxySetupCard(onOpenTelegramProxy: () -> Unit) {
 }
 
 private fun openTelegramProxy(context: android.content.Context) {
-    // Official deep link for Telegram SOCKS proxy
     val uri = Uri.parse(
         "tg://proxy?server=127.0.0.1&port=${VlessConfig.LOCAL_SOCKS_PORT}"
     )
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, uri))
     } catch (e: Exception) {
-        // Fallback: try https deep link used by Telegram clients
         try {
             val web = Uri.parse(
                 "https://t.me/proxy?server=127.0.0.1&port=${VlessConfig.LOCAL_SOCKS_PORT}"

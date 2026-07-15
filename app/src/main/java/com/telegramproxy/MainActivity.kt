@@ -4,16 +4,20 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -58,7 +62,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
 
-        // Handle vless:// deep link
         intent?.data?.let { uri ->
             if (uri.scheme.equals("vless", ignoreCase = true)) {
                 viewModel.addVless("Импорт", uri.toString())
@@ -67,9 +70,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             TelegramProxyTheme {
-                TelegramProxyApp(
-                    viewModel = viewModel
-                )
+                TelegramProxyApp(viewModel = viewModel)
             }
         }
     }
@@ -103,6 +104,10 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val message by viewModel.message.collectAsState()
+    val downloaderState by viewModel.xrayDownloaderState.collectAsState()
+    val downloadProgress by viewModel.xrayProgress.collectAsState()
+    val xrayError by viewModel.xrayError.collectAsState()
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -126,25 +131,62 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
             }
         }
     ) { padding ->
-        when (selectedTab) {
-            0 -> ServerListScreen(
-                servers = servers,
-                selectedServerId = selectedId,
-                connectionState = connectionState,
-                statusMessage = statusMessage,
-                onSelectServer = viewModel::selectServer,
-                onConnectToggle = viewModel::toggleConnection,
-                onDeleteServer = viewModel::removeServer,
-                modifier = Modifier.padding(padding)
-            )
-            1 -> AddSubscriptionScreen(
-                subscriptions = subscriptions,
-                isLoading = isLoading,
-                onAddVless = { name, url -> viewModel.addVless(name, url) },
-                onImportUrl = { name, url -> viewModel.importSubscriptionSuspend(name, url) },
-                onRemoveSubscription = viewModel::removeSubscription,
-                modifier = Modifier.padding(padding)
-            )
+        Column(Modifier.padding(padding)) {
+            if (downloaderState == XrayDownloader.State.DOWNLOADING ||
+                downloaderState == XrayDownloader.State.CHECKING
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        text = when (downloaderState) {
+                            XrayDownloader.State.CHECKING -> "Проверка Xray…"
+                            XrayDownloader.State.DOWNLOADING -> "Загрузка Xray… ${(downloadProgress * 100).toInt()}%"
+                            else -> ""
+                        },
+                        color = TelegramBlue,
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    LinearProgressIndicator(
+                        progress = { downloadProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        color = TelegramBlue,
+                    )
+                }
+            }
+
+            if (xrayError != null) {
+                Text(
+                    text = xrayError ?: "",
+                    color = com.telegramproxy.ui.theme.ErrorRed,
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
+            when (selectedTab) {
+                0 -> ServerListScreen(
+                    servers = servers,
+                    selectedServerId = selectedId,
+                    connectionState = connectionState,
+                    statusMessage = statusMessage,
+                    message = message,
+                    onClearMessage = viewModel::clearMessage,
+                    onSelectServer = viewModel::selectServer,
+                    onConnectToggle = viewModel::toggleConnection,
+                    onDeleteServer = viewModel::removeServer,
+                    modifier = Modifier.weight(1f)
+                )
+                1 -> AddSubscriptionScreen(
+                    subscriptions = subscriptions,
+                    isLoading = isLoading,
+                    onAddVless = { name, url -> viewModel.addVless(name, url) },
+                    onImportUrl = { name, url -> viewModel.importSubscriptionSuspend(name, url) },
+                    onRemoveSubscription = viewModel::removeSubscription,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
