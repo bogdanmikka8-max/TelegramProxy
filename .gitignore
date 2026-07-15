@@ -21,3 +21,4 @@ out/
 app/src/main/jniLibs/**/*.so
 !app/src/main/jniLibs/.gitkeep
 app/src/main/assets/xray
+build-output/
