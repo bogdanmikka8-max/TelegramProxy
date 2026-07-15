@@ -1,6 +1,7 @@
 package com.telegramproxy
 
 import android.app.Application
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,9 +47,6 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message.asStateFlow()
-
     init {
         ensureXrayReady()
     }
@@ -70,19 +68,23 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
             state is ProxyService.ConnectionState.Connecting
         ) {
             ProxyService.disconnect(ctx)
-        } else {
-            if (!XrayDownloader.isReady(ctx)) {
-                _message.value = "Xray не загружен. Подождите…"
-                ensureXrayReady()
-                return
-            }
-            val id = manager.selectedServerId.value
-            if (id == null) {
-                _message.value = "Сначала выберите сервер"
-                return
-            }
-            ProxyService.connect(ctx, id)
+            return
         }
+
+        if (!XrayDownloader.isReady(ctx)) {
+            val msg = "Загрузка Xray… Подождите"
+            Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+            ensureXrayReady()
+            return
+        }
+
+        val id = manager.selectedServerId.value
+        if (id == null) {
+            Toast.makeText(ctx, "Сначала выберите сервер", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        ProxyService.connect(ctx, id)
     }
 
     fun addVless(name: String, url: String): Result<VlessServer> {
@@ -111,7 +113,5 @@ class ProxyViewModel(app: Application) : AndroidViewModel(app) {
         manager.removeServer(id)
     }
 
-    fun clearMessage() {
-        _message.value = null
-    }
+    fun clearMessage() {}
 }

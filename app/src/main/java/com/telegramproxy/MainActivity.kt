@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
@@ -56,7 +57,7 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* granted or not — service still works on older APIs */ }
+    ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,7 +106,6 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val message by viewModel.message.collectAsState()
     val downloaderState by viewModel.xrayDownloaderState.collectAsState()
     val downloadProgress by viewModel.xrayProgress.collectAsState()
     val xrayError by viewModel.xrayError.collectAsState()
@@ -133,35 +133,35 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
         }
     ) { padding ->
         Column(Modifier.padding(padding)) {
-            if (downloaderState == XrayDownloader.State.DOWNLOADING ||
+            val showProgress = downloaderState == XrayDownloader.State.DOWNLOADING ||
                 downloaderState == XrayDownloader.State.CHECKING
-            ) {
-                Column(Modifier.fillMaxWidth()) {
-                    Text(
-                        text = when (downloaderState) {
-                            XrayDownloader.State.CHECKING -> "Проверка Xray…"
-                            XrayDownloader.State.DOWNLOADING -> "Загрузка Xray… ${(downloadProgress * 100).toInt()}%"
-                            else -> ""
-                        },
-                        color = TelegramBlue,
-                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
-                    LinearProgressIndicator(
-                        progress = { downloadProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        color = TelegramBlue,
-                    )
-                }
+
+            if (showProgress) {
+                Text(
+                    text = when (downloaderState) {
+                        XrayDownloader.State.CHECKING -> "Проверка Xray…"
+                        XrayDownloader.State.DOWNLOADING -> "Загрузка Xray… ${(downloadProgress * 100).toInt()}%"
+                        else -> ""
+                    },
+                    color = TelegramBlue,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+                LinearProgressIndicator(
+                    progress = { downloadProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .padding(horizontal = 16.dp),
+                    color = TelegramBlue,
+                )
             }
 
             if (xrayError != null) {
                 Text(
                     text = xrayError ?: "",
                     color = com.telegramproxy.ui.theme.ErrorRed,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
@@ -172,8 +172,8 @@ fun TelegramProxyApp(viewModel: ProxyViewModel) {
                     selectedServerId = selectedId,
                     connectionState = connectionState,
                     statusMessage = statusMessage,
-                    message = message,
-                    onClearMessage = viewModel::clearMessage,
+                    message = null,
+                    onClearMessage = {},
                     onSelectServer = viewModel::selectServer,
                     onConnectToggle = viewModel::toggleConnection,
                     onDeleteServer = viewModel::removeServer,

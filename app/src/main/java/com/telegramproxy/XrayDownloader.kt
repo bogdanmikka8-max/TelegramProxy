@@ -34,13 +34,15 @@ object XrayDownloader {
 
     private val http = OkHttpClient.Builder()
         .followRedirects(true)
+        .connectTimeout(30, okhttp3.internal.http2.Connection.DEFAULT_PING_INTERVAL_MS.toLong())
+        .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     fun getBinaryFile(context: Context): File = File(context.filesDir, "xray")
 
     fun isReady(context: Context): Boolean {
         val f = getBinaryFile(context)
-        return f.exists() && f.length() > 1000 && f.canExecute()
+        return f.exists() && f.length() > 1000
     }
 
     suspend fun ensureReady(context: Context): Boolean {
@@ -52,12 +54,13 @@ object XrayDownloader {
             try {
                 _state.value = State.CHECKING
                 _errorMessage.value = null
+                _progress.value = 0f
                 val downloadUrl = resolveDownloadUrl()
                 Log.i(TAG, "Download URL: $downloadUrl")
                 downloadAndExtract(context, downloadUrl)
                 val binary = getBinaryFile(context)
                 if (binary.exists() && binary.length() > 1000) {
-                    binary.setExecutable(true)
+                    makeExecutable(binary)
                     _state.value = State.READY
                     _progress.value = 1f
                     Log.i(TAG, "Xray binary ready: ${binary.absolutePath} (${binary.length()} bytes)")
@@ -73,6 +76,16 @@ object XrayDownloader {
                 _errorMessage.value = "Ошибка загрузки: ${e.message}"
                 false
             }
+        }
+    }
+
+    private fun makeExecutable(file: File) {
+        file.setExecutable(true, false)
+        file.setReadable(true, false)
+        try {
+            Runtime.getRuntime().exec(arrayOf("chmod", "755", file.absolutePath)).waitFor()
+        } catch (e: Exception) {
+            Log.w(TAG, "chmod failed: ${e.message}")
         }
     }
 
@@ -124,7 +137,7 @@ object XrayDownloader {
                     output.write(buffer, 0, read)
                     totalRead += read
                     if (contentLength > 0) {
-                        _progress.value = (totalRead / contentLength).coerceIn(0f, 1f)
+                        _progress.value = (totalRead / contentLength * 0.9f).coerceIn(0f, 0.9f)
                     }
                 }
             }
@@ -133,23 +146,31 @@ object XrayDownloader {
 
         extractXrayBinary(zipFile, getBinaryFile(context))
         zipFile.delete()
+        _progress.value = 1f
     }
 
     private fun extractXrayBinary(zipFile: File, targetFile: File) {
         ZipInputStream(zipFile.inputStream()).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                if (entry.name == "xray" && !entry.isDirectory) {
+                val name = entry.name
+                val isXrayBinary = !entry.isDirectory && (
+                    name == "xray" ||
+                    name.endsWith("/xray") ||
+                    name.endsWith("\\xray") ||
+                    name == "xray.exe"
+                )
+                if (isXrayBinary) {
                     FileOutputStream(targetFile).use { fos ->
                         zis.copyTo(fos)
                     }
-                    Log.i(TAG, "Extracted xray from zip (${targetFile.length()} bytes)")
+                    Log.i(TAG, "Extracted '$name' from zip (${targetFile.length()} bytes)")
                     return
                 }
                 entry = zis.nextEntry
             }
         }
-        throw IllegalStateException("xray binary not found inside zip archive")
+        throw IllegalStateException("xray binary not found inside zip. Entries checked.")
     }
 
     fun delete(context: Context) {
