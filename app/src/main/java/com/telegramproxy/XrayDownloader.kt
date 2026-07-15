@@ -52,9 +52,8 @@ object XrayDownloader {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun getBinaryFile(context: Context): File {
-        val nativeDir = File(context.applicationInfo.nativeLibraryDir)
-        nativeDir.mkdirs()
-        return File(nativeDir, "libxray.so")
+        val binDir = context.getDir("bin", Context.MODE_PRIVATE)
+        return File(binDir, "xray")
     }
 
     fun isReady(context: Context): Boolean {
