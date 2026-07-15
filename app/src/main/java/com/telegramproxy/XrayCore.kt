@@ -73,6 +73,29 @@ class XrayCore private constructor(private val context: Context) {
             binary.setReadable(true, false)
             addLog("isExecutable: ${binary.canExecute()}")
 
+            addLog("Тест бинарника: ${binary.absolutePath} version")
+            try {
+                val testPb = ProcessBuilder(binary.absolutePath, "version")
+                testPb.redirectErrorStream(true)
+                val testProc = testPb.start()
+                val testOutput = testProc.inputStream.bufferedReader().readText()
+                val exited = testProc.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+                addLog("Тест version: exit=${if (exited) testProc.exitValue() else "timeout"}")
+                if (testOutput.isNotBlank()) addLog("version output: ${testOutput.take(200).trim()}")
+                if (exited && testProc.exitValue() != 0) {
+                    addLog("ОШИБКА: xray version вернул код ${testProc.exitValue()}")
+                    _state.value = State.ERROR
+                    _statusMessage.value = "Бинарник не запускается (код ${testProc.exitValue()})"
+                    return Result.failure(IllegalStateException("xray version failed"))
+                }
+            } catch (e: Exception) {
+                addLog("ОШИБКА теста: ${e.javaClass.simpleName}: ${e.message}")
+                _state.value = State.ERROR
+                _statusMessage.value = "Не удалось запустить: ${e.message}"
+                return Result.failure(e)
+            }
+            addLog("Тест пройден OK")
+
             addLog("Запуск: ${binary.absolutePath} run -c ${configFile.absolutePath}")
 
             val pb = ProcessBuilder(binary.absolutePath, "run", "-c", configFile.absolutePath)
