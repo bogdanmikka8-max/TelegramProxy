@@ -34,7 +34,7 @@ object XrayDownloader {
 
     private val http = OkHttpClient.Builder()
         .followRedirects(true)
-        .connectTimeout(30, okhttp3.internal.http2.Connection.DEFAULT_PING_INTERVAL_MS.toLong())
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
